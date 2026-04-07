@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planner Export Viewer</title>
+  <style>
+    /* ── Reset & base ── */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: #f0f2f5; color: #333; min-height: 100vh; }
+
+    /* ── Upload screen ── */
+    #upload-screen { display: flex; flex-direction: column; min-height: 100vh; }
+    #upload-screen header {
+      background: #1a1a2e; color: #fff; padding: 20px 28px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    #upload-screen header h1 { font-size: 1.4rem; }
+    #upload-screen header span { font-size: 0.9rem; opacity: 0.6; font-weight: 400; }
+    .upload-body { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+    .upload-card {
+      background: #fff; border-radius: 14px; padding: 36px 40px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 560px; width: 100%;
+    }
+    .upload-card h2 { font-size: 1.1rem; margin-bottom: 6px; color: #1a1a2e; }
+    .upload-card p { font-size: 0.85rem; color: #777; margin-bottom: 24px; line-height: 1.6; }
+    .drop-zone {
+      border: 2px dashed #c5ccd6; border-radius: 10px; padding: 36px 20px;
+      text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 20px;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #3498db; background: #eaf4fb; }
+    .drop-icon { font-size: 2.4rem; margin-bottom: 10px; }
+    .drop-zone p { margin: 0; font-size: 0.9rem; color: #555; }
+    .drop-zone p strong { color: #1a1a2e; }
+    .drop-zone small { font-size: 0.75rem; color: #aaa; display: block; margin-top: 6px; }
+    .file-list { margin-bottom: 20px; }
+    .file-item {
+      display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+      border-radius: 6px; font-size: 0.82rem; margin-bottom: 4px; background: #f8f9fa;
+    }
+    .file-item.ok    { background: #eafaf1; color: #1e8449; }
+    .file-item.miss  { background: #fdf3f0; color: #999; }
+    .file-item .fi-name { flex: 1; font-weight: 600; }
+    .file-item .fi-size { color: #aaa; font-size: 0.74rem; }
+    .btn-load {
+      width: 100%; padding: 13px; border: none; border-radius: 9px; font-size: 0.96rem;
+      font-weight: 700; cursor: pointer; background: #e94560; color: #fff;
+      transition: opacity 0.2s; letter-spacing: 0.01em;
+    }
+    .btn-load:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-load:not(:disabled):hover { opacity: 0.87; }
+    .error-msg { background: #fdedec; color: #c0392b; border-radius: 8px;
+                 padding: 10px 14px; font-size: 0.83rem; margin-top: 14px; display: none; }
+
+    /* ── App screen (hidden until loaded) ── */
+    #app-screen { display: none; }
+
+    /* ── App header ── */
+    #app-screen h1 {
+      padding: 14px 24px; background: #1a1a2e; color: #fff;
+      font-size: 1.35rem; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    h1 span.subtitle { font-size: 0.88rem; opacity: 0.6; font-weight: 400; }
+    .reset-btn {
+      margin-left: auto; padding: 5px 14px; border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.3); background: transparent; color: rgba(255,255,255,0.7);
+      font-size: 0.78rem; cursor: pointer; transition: all 0.2s;
+    }
+    .reset-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; background: #16213e; padding: 0 24px; }
+    .tab-btn { padding: 10px 24px; color: #aaa; cursor: pointer;
+               border: none; background: none; font-size: 0.95rem;
+               border-bottom: 3px solid transparent; }
+    .tab-btn.active { color: #fff; border-bottom-color: #e94560; }
+    .tab-btn:hover { color: #fff; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Kanban ── */
+    .kanban-board { display: flex; gap: 16px; padding: 20px; overflow-x: auto;
+                    align-items: flex-start; min-height: calc(100vh - 140px); }
+    .kanban-col { min-width: 280px; max-width: 300px; flex-shrink: 0;
+                  background: #e8ecf0; border-radius: 10px; overflow: hidden; }
+    .col-header { display: flex; justify-content: space-between; align-items: center;
+                  padding: 12px 14px; background: #fff; font-weight: 600; font-size: 0.95rem; }
+    .col-count { background: #e0e0e0; color: #555; border-radius: 12px;
+                 padding: 2px 8px; font-size: 0.8rem; font-weight: 600; }
+    .col-cards { padding: 10px; display: flex; flex-direction: column; gap: 10px;
+                 max-height: calc(100vh - 200px); overflow-y: auto; }
+    .task-card { background: #fff; border-radius: 8px; padding: 12px;
+                 box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: box-shadow 0.2s; }
+    .task-card:hover { box-shadow: 0 3px 8px rgba(0,0,0,0.15); }
+    .task-title { font-size: 0.88rem; font-weight: 600; margin-bottom: 6px; line-height: 1.4; }
+    .task-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+    .badge { font-size: 0.7rem; padding: 2px 7px; border-radius: 10px;
+             color: #fff; font-weight: 600; white-space: nowrap; }
+    .task-due, .task-start, .task-assignees { font-size: 0.75rem; color: #555;
+      margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .progress-icon { font-size: 0.85rem; margin-top: 6px; display: flex;
+                     align-items: center; gap: 4px; font-weight: 600; }
+    .progress-icon span.p-sym { font-size: 1.1rem; line-height: 1; }
+    .detail-toggle { font-size: 0.72rem; color: #3498db; cursor: pointer;
+                     margin-top: 6px; user-select: none; }
+    .detail-toggle:hover { text-decoration: underline; }
+    .task-detail { margin-top: 8px; border-top: 1px solid #eee; padding-top: 8px; }
+    .task-desc { font-size: 0.75rem; color: #444; line-height: 1.5; max-height: 120px;
+                 overflow-y: auto; white-space: pre-wrap; }
+    .checklist { list-style: none; margin-top: 6px; }
+    .checklist li { font-size: 0.75rem; padding: 2px 0; color: #444; }
+    .checklist li.checked { color: #aaa; text-decoration: line-through; }
+
+    /* ── Timeline ── */
+    .timeline-wrap { padding: 20px; overflow-x: auto; }
+    .tl-header-row, .tl-row { display: grid;
+      grid-template-columns: 280px 1fr 150px; gap: 0; align-items: center; }
+    .tl-header-row { position: sticky; top: 0; background: #fff; z-index: 10;
+                      border-bottom: 2px solid #ddd; padding: 8px 0; font-weight: 600;
+                      font-size: 0.8rem; color: #555; }
+    .tl-label-header, .tl-date-header { padding: 0 12px; }
+    .tl-chart-header { position: relative; height: 36px; overflow: visible; }
+    .tl-row { border-bottom: 1px solid #eee; min-height: 36px; }
+    .tl-label { padding: 6px 12px; font-size: 0.78rem; overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; display: flex;
+                 align-items: center; gap: 4px; }
+    .tl-chart { position: relative; height: 28px; }
+    .tl-bar { position: absolute; height: 18px; top: 5px; border-radius: 4px;
+               overflow: hidden; min-width: 6px; cursor: default; }
+    .tl-bar-fill { height: 100%; }
+    .tl-marker { position: absolute; width: 12px; height: 12px; top: 8px;
+                  margin-left: -6px; border-radius: 3px; transform: rotate(45deg); }
+    .tl-date { padding: 0 8px; font-size: 0.72rem; color: #666; white-space: nowrap; }
+    .month-marker { position: absolute; top: 0; border-left: 1px dashed #ccc;
+                    height: 100%; display: flex; align-items: flex-end; }
+    .month-marker span { font-size: 0.65rem; color: #888; padding-left: 3px;
+                          white-space: nowrap; transform: translateY(-2px); display: block; }
+    .today-line { position: absolute; top: 0; border-left: 2px solid #e74c3c;
+                  height: 100%; z-index: 5; }
+    .today-line span { font-size: 0.65rem; color: #e74c3c; padding-left: 3px;
+                       transform: translateY(-2px); display: block; white-space: nowrap; }
+    .cat-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+               margin-left: 2px; flex-shrink: 0; }
+
+    /* ── Toolbars ── */
+    .kanban-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+                      background: #fff; border-bottom: 1px solid #ddd; flex-wrap: wrap; }
+    .shared-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 20px;
+                       background: #fff; border-bottom: 1px solid #ddd; flex-wrap: wrap; }
+    .toolbar-section { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .toolbar-label { font-size: 0.82rem; font-weight: 600; color: #555; white-space: nowrap; }
+    .toolbar-select { padding: 5px 10px; border: 1px solid #ccc; border-radius: 6px;
+                      font-size: 0.82rem; background: #fff; cursor: pointer; }
+    .toolbar-select:focus { outline: none; border-color: #3498db; }
+    .filter-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+    .filter-group { position: relative; }
+    .filter-btn { padding: 5px 12px; border: 1px solid #ccc; border-radius: 16px;
+                  font-size: 0.78rem; background: #fff; cursor: pointer; white-space: nowrap; }
+    .filter-btn:hover { border-color: #888; }
+    .filter-btn.filter-active { background: #eaf0fb; border-color: #3498db; color: #2c3e50; }
+    .filter-dropdown { position: absolute; top: 100%; left: 0; margin-top: 4px;
+                       background: #fff; border: 1px solid #ddd; border-radius: 8px;
+                       box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 100;
+                       min-width: 180px; max-height: 280px; overflow-y: auto; }
+    .filter-dd-header { display: flex; justify-content: space-between; align-items: center;
+                        padding: 8px 12px; border-bottom: 1px solid #eee; }
+    .filter-dd-header span { font-size: 0.78rem; font-weight: 600; color: #333; }
+    .filter-dd-header button { font-size: 0.72rem; color: #e74c3c; background: none;
+                               border: none; cursor: pointer; }
+    .filter-dd-header button:hover { text-decoration: underline; }
+    .filter-option { display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+                     font-size: 0.78rem; cursor: pointer; }
+    .filter-option:hover { background: #f5f5f5; }
+    .filter-option input { accent-color: #3498db; }
+    .kanban-empty { padding: 40px; text-align: center; color: #888; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     UPLOAD SCREEN
+══════════════════════════════════════════════ -->
+<div id="upload-screen">
+  <header>
+    <h1>&#128203; Planner Export Viewer</h1>
+    <span>Visualise your Microsoft Planner export as Kanban &amp; Timeline</span>
+  </header>
+  <div class="upload-body">
+    <div class="upload-card">
+      <h2>Load your Planner export</h2>
+      <p>
+        Select the folder containing your Planner JSON export files.<br>
+        All processing happens <strong>entirely in your browser</strong> — no data is ever uploaded.
+      </p>
+
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('folderInput').click()">
+        <div class="drop-icon">&#128193;</div>
+        <p><strong>Click to select folder</strong> or drag &amp; drop files here</p>
+        <small>Needs: PlanDetails.json · Buckets.json · Tasks.json · TaskDetails.json · UserLookup.json</small>
+      </div>
+      <input type="file" id="folderInput" webkitdirectory multiple style="display:none" onchange="onFolderSelected(this.files)">
+
+      <div class="file-list" id="fileList"></div>
+      <button class="btn-load" id="loadBtn" disabled onclick="processAndShow()">&#9889; View Report</button>
+      <div class="error-msg" id="errorMsg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     APP SCREEN
+══════════════════════════════════════════════ -->
+<div id="app-screen">
+  <h1>
+    &#128203; <span id="planTitle">Planner Board</span>
+    <span class="subtitle" id="appSubtitle"></span>
+    <button class="reset-btn" onclick="resetApp()">&#8592; Load another</button>
+  </h1>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="kanban" onclick="switchTab('kanban')">&#128194; Kanban</button>
+    <button class="tab-btn" data-tab="timeline" onclick="switchTab('timeline')">&#128197; Timeline</button>
+  </div>
+
+  <!-- Shared filter toolbar -->
+  <div class="shared-toolbar">
+    <div class="toolbar-section">
+      <span class="toolbar-label">Filter</span>
+      <div class="filter-chips">
+        <div class="filter-group" data-filter="dueDate">
+          <button class="filter-btn" data-label="Due Date">Due Date &#9662;</button>
+          <div class="filter-dropdown" id="fd-dueDate" style="display:none"></div>
+        </div>
+        <div class="filter-group" data-filter="priority">
+          <button class="filter-btn" data-label="Priority">Priority &#9662;</button>
+          <div class="filter-dropdown" id="fd-priority" style="display:none"></div>
+        </div>
+        <div class="filter-group" data-filter="progress">
+          <button class="filter-btn" data-label="Progress">Progress &#9662;</button>
+          <div class="filter-dropdown" id="fd-progress" style="display:none"></div>
+        </div>
+        <div class="filter-group" data-filter="labels">
+          <button class="filter-btn" data-label="Labels">Labels &#9662;</button>
+          <div class="filter-dropdown" id="fd-labels" style="display:none"></div>
+        </div>
+        <div class="filter-group" data-filter="bucket">
+          <button class="filter-btn" data-label="Bucket">Bucket &#9662;</button>
+          <div class="filter-dropdown" id="fd-bucket" style="display:none"></div>
+        </div>
+        <div class="filter-group" data-filter="assignment">
+          <button class="filter-btn" data-label="Assignment">Assignment &#9662;</button>
+          <div class="filter-dropdown" id="fd-assignment" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-kanban" class="tab-content active">
+    <div class="kanban-toolbar">
+      <div class="toolbar-section">
+        <span class="toolbar-label">Group by</span>
+        <select id="groupBySelect" class="toolbar-select" onchange="changeGroupBy(this.value)">
+          <option value="bucket" selected>Bucket</option>
+          <option value="assignedTo">Assigned To</option>
+          <option value="progress">Progress</option>
+          <option value="dueDate">Due Date</option>
+          <option value="labels">Labels</option>
+          <option value="priority">Priority</option>
+        </select>
+      </div>
+    </div>
+    <div id="kanban-container" class="kanban-board"></div>
+  </div>
+
+  <div id="tab-timeline" class="tab-content">
+    <div id="timeline-container"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════════
+//  Constants
+// ══════════════════════════════════════════════════════════════
+var REQUIRED_FILES = ['PlanDetails.json','Buckets.json','Tasks.json','TaskDetails.json','UserLookup.json'];
+var PRIORITY_MAP   = {1:{label:'Urgent',color:'#c0392b'},3:{label:'Important',color:'#e67e22'},5:{label:'Medium',color:'#2980b9'},9:{label:'Low',color:'#7f8c8d'}};
+var PROGRESS_STYLE = {'Not Started':{color:'#95a5a6',pct:0},'In Progress':{color:'#f39c12',pct:50},'Completed':{color:'#2ecc71',pct:100}};
+var PROGRESS_ICONS = {'Not Started':'○','In Progress':'◑','Completed':'✓'};
+var BUCKET_COLORS  = {'Backlog':'#95a5a6','Up next':'#3498db','In progress':'#f39c12','Blocked':'#e74c3c','Completed':'#2ecc71'};
+var CAT_COLORS     = ['#1abc9c','#3498db','#9b59b6','#e67e22','#e74c3c','#2ecc71','#f39c12','#16a085','#8e44ad','#d35400'];
+var MONTH_NAMES    = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// ══════════════════════════════════════════════════════════════
+//  State
+// ══════════════════════════════════════════════════════════════
+var _fileMap       = {};   // name -> File object
+var KANBAN_DATA    = null; // processed data
+var kanbanGroupBy  = 'bucket';
+var kanbanFilters  = {};
+
+// ══════════════════════════════════════════════════════════════
+//  Upload / file handling
+// ══════════════════════════════════════════════════════════════
+function onFolderSelected(files) {
+  _fileMap = {};
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    var base = f.name.split('/').pop().split('\\').pop();
+    if (REQUIRED_FILES.indexOf(base) !== -1) _fileMap[base] = f;
+  }
+  renderFileList();
+}
+
+function renderFileList() {
+  var list = document.getElementById('fileList');
+  var allPresent = true;
+  var html = '';
+  REQUIRED_FILES.forEach(function(name) {
+    var f = _fileMap[name];
+    if (f) {
+      html += '<div class="file-item ok"><span>&#10003;</span><span class="fi-name">' + name + '</span>' +
+              '<span class="fi-size">' + (f.size / 1024).toFixed(1) + ' KB</span></div>';
+    } else {
+      allPresent = false;
+      html += '<div class="file-item miss"><span>&#8212;</span><span class="fi-name">' + name + '</span>' +
+              '<span class="fi-size">missing</span></div>';
+    }
+  });
+  list.innerHTML = html;
+  document.getElementById('loadBtn').disabled = !allPresent;
+  document.getElementById('errorMsg').style.display = 'none';
+}
+
+// Drag & drop
+(function() {
+  var dz = document.getElementById('dropZone');
+  dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', function() { dz.classList.remove('drag-over'); });
+  dz.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    var files = e.dataTransfer.files;
+    onFolderSelected(files);
+  });
+})();
+
+// ══════════════════════════════════════════════════════════════
+//  Data processing (port of Python load_data)
+// ══════════════════════════════════════════════════════════════
+function readFileAsJSON(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try { resolve(JSON.parse(e.target.result)); }
+      catch(err) { reject(new Error('Could not parse ' + file.name + ': ' + err.message)); }
+    };
+    reader.onerror = function() { reject(new Error('Could not read ' + file.name)); };
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+
+async function processAndShow() {
+  var btn = document.getElementById('loadBtn');
+  btn.disabled = true; btn.textContent = '⏳ Loading…';
+  var errEl = document.getElementById('errorMsg');
+  errEl.style.display = 'none';
+  try {
+    var results = await Promise.all(REQUIRED_FILES.map(function(n){ return readFileAsJSON(_fileMap[n]); }));
+    var planDetails = results[0];
+    var bucketsRaw  = results[1];
+    var tasksRaw    = results[2];
+    var detailsRaw  = results[3];
+    var usersRaw    = results[4];
+
+    KANBAN_DATA = buildKanbanData(planDetails, bucketsRaw, tasksRaw, detailsRaw, usersRaw);
+
+    // Update header
+    document.getElementById('planTitle').textContent = planDetails.title || 'Planner Board';
+    document.getElementById('appSubtitle').textContent =
+      KANBAN_DATA.tasks.length + ' tasks · ' + KANBAN_DATA.buckets.length + ' buckets';
+
+    // Show app
+    document.getElementById('upload-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'block';
+    initFilterDropdowns();
+    renderAll();
+  } catch(e) {
+    errEl.textContent = '✗ ' + e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = '⚡ View Report';
+  }
+}
+
+function buildKanbanData(planDetails, bucketsRaw, tasksRaw, detailsRaw, usersRaw) {
+  // Users lookup
+  var users = {};
+  var userArr = Array.isArray(usersRaw) ? usersRaw : (usersRaw.value || []);
+  userArr.forEach(function(u) { if (u.id) users[u.id] = u.displayName || u.id; });
+
+  // Category labels
+  var categoryLabels = planDetails.categoryDescriptions || {};
+
+  // Buckets sorted by orderHint (lexicographic – how Planner orders them)
+  var bucketsList = Array.isArray(bucketsRaw) ? bucketsRaw : (bucketsRaw.value || []);
+  var bucketsSorted = bucketsList.slice().sort(function(a, b) {
+    return (a.orderHint || '').localeCompare(b.orderHint || '');
+  });
+  var bucketsById = {};
+  bucketsSorted.forEach(function(b) { bucketsById[b.id] = b; });
+
+  // Task details lookup
+  var detailsList = Array.isArray(detailsRaw) ? detailsRaw : (detailsRaw.value || []);
+  var detailsById = {};
+  detailsList.forEach(function(d) { if (d.id) detailsById[d.id] = d; });
+
+  // Enrich tasks
+  var tasks = Array.isArray(tasksRaw) ? tasksRaw : (tasksRaw.value || []);
+  var enriched = tasks.map(function(task) {
+    var tid    = task.id;
+    var detail = detailsById[tid] || {};
+    var bucket = bucketsById[task.bucketId || ''] || {};
+
+    // Assignees – try _assignments first, then assignments dict
+    var assignees = [];
+    if (Array.isArray(task._assignments) && task._assignments.length) {
+      assignees = task._assignments.map(function(a) {
+        return users[a.userId] || (a.userId ? a.userId.slice(0,8) + '…' : '?');
+      });
+    } else if (task.assignments && typeof task.assignments === 'object') {
+      assignees = Object.keys(task.assignments).map(function(uid) {
+        return users[uid] || (uid.slice(0,8) + '…');
+      });
+    }
+
+    // Categories
+    var applied = task.appliedCategories || {};
+    var categories = Object.keys(applied)
+      .filter(function(id) { return categoryLabels[id]; })
+      .map(function(id) { return categoryLabels[id]; });
+
+    // Checklist
+    var checklist = [];
+    var clRaw = detail.checklist;
+    if (Array.isArray(clRaw)) {
+      checklist = clRaw
+        .filter(function(item) { return item && item.value; })
+        .map(function(item) { return { title: item.value.title || '', checked: !!item.value.isChecked }; });
+    } else if (clRaw && typeof clRaw === 'object') {
+      // Sometimes it's an object keyed by guid
+      checklist = Object.values(clRaw)
+        .filter(function(v) { return v; })
+        .map(function(v) { return { title: v.title || '', checked: !!v.isChecked }; });
+    }
+
+    // Progress
+    var rawPct   = task.percentComplete || 0;
+    var progress = rawPct === 100 ? 'Completed' : rawPct === 50 ? 'In Progress' : 'Not Started';
+
+    return {
+      id:         tid,
+      title:      task.title || '(no title)',
+      bucketId:   task.bucketId || '',
+      bucketName: bucket.name || 'Unknown',
+      progress:   progress,
+      priority:   task.priority !== undefined ? task.priority : 5,
+      start:      task.startDateTime || null,
+      due:        task.dueDateTime   || null,
+      description: detail.description || '',
+      checklist:  checklist,
+      assignees:  assignees,
+      categories: categories,
+    };
+  });
+
+  var allLabels    = Array.from(new Set(enriched.flatMap(function(t){ return t.categories; }))).sort();
+  var allAssignees = Array.from(new Set(enriched.flatMap(function(t){ return t.assignees;  }))).sort();
+
+  return {
+    tasks:        enriched,
+    buckets:      bucketsSorted,
+    allLabels:    allLabels,
+    allAssignees: allAssignees,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Helpers
+// ══════════════════════════════════════════════════════════════
+function esc(s) {
+  var d = document.createElement('div');
+  d.appendChild(document.createTextNode(String(s)));
+  return d.innerHTML;
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  try {
+    var d = new Date(iso);
+    return d.getUTCDate() + ' ' + MONTH_NAMES[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+  } catch(e) { return iso.slice(0,10); }
+}
+function isOverdue(due, progress) {
+  if (!due || progress === 'Completed') return false;
+  return new Date(due) < new Date();
+}
+function getDueDateGroup(due, progress) {
+  if (!due) return 'No Date';
+  var d   = new Date(due);
+  var now = new Date();
+  var today       = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var tomorrow    = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  var endOfWeek   = new Date(today); endOfWeek.setDate(today.getDate() + (7 - today.getDay()));
+  var endNextWeek = new Date(endOfWeek); endNextWeek.setDate(endOfWeek.getDate() + 7);
+  if (d < today && progress !== 'Completed') return 'Overdue';
+  if (d >= today && d < tomorrow) return 'Today';
+  if (d >= tomorrow && d <= endOfWeek) return 'This Week';
+  if (d > endOfWeek && d <= endNextWeek) return 'Next Week';
+  if (d > endNextWeek) return 'Later';
+  return 'No Date';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Kanban rendering
+// ══════════════════════════════════════════════════════════════
+function renderCard(t) {
+  var ps      = PROGRESS_STYLE[t.progress];
+  var overdue = isOverdue(t.due, t.progress);
+  var pm      = PRIORITY_MAP[t.priority] || {label:'Medium',color:'#2980b9'};
+  var badges  = '<span class="badge" style="background:' + pm.color + '">' + pm.label + '</span>';
+  t.categories.forEach(function(cat, i) {
+    badges += '<span class="badge" style="background:' + CAT_COLORS[i % CAT_COLORS.length] + '">' + esc(cat) + '</span>';
+  });
+  var dueHtml = '';
+  if (t.due) {
+    var dc = overdue ? '#e74c3c' : '#555', icon = overdue ? '⚠ ' : '📅 ';
+    dueHtml = '<div class="task-due" style="color:' + dc + '">' + icon + fmtDate(t.due) + '</div>';
+  }
+  var startHtml  = t.start  ? '<div class="task-start">▶ ' + fmtDate(t.start) + '</div>' : '';
+  var assignHtml = t.assignees.length ? '<div class="task-assignees">👤 ' + t.assignees.map(esc).join(', ') + '</div>' : '';
+  var pIcon = PROGRESS_ICONS[t.progress] || '○';
+  var progHtml = '<div class="progress-icon" style="color:' + ps.color + '" title="' + t.progress + '">' +
+                 '<span class="p-sym">' + pIcon + '</span> ' + t.progress + '</div>';
+  var detailHtml = '';
+  var parts = [];
+  if (t.description) parts.push('<div class="task-desc">' + esc(t.description).replace(/\n/g,'<br>') + '</div>');
+  if (t.checklist && t.checklist.length) {
+    var items = t.checklist.map(function(ci) {
+      return '<li class="' + (ci.checked ? 'checked' : '') + '">' + (ci.checked ? '✅' : '⬜') + ' ' + esc(ci.title) + '</li>';
+    }).join('');
+    parts.push('<ul class="checklist">' + items + '</ul>');
+  }
+  if (parts.length) {
+    var cid = 'card-' + t.id.replace(/-/g,'').slice(0,12);
+    detailHtml = '<div class="detail-toggle" onclick="toggleDetail(\'' + cid + '\')">▼ Details</div>' +
+                 '<div id="' + cid + '" class="task-detail" style="display:none">' + parts.join('') + '</div>';
+  }
+  var cs = t.progress === 'Completed' ? ' style="opacity:0.6"' : '';
+  return '<div class="task-card"' + cs + '>' +
+         '<div class="task-title">' + esc(t.title) + '</div>' +
+         '<div class="task-badges">' + badges + '</div>' +
+         startHtml + dueHtml + assignHtml + progHtml + detailHtml + '</div>';
+}
+
+function toggleDetail(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var toggle = el.previousElementSibling;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    if (toggle) toggle.textContent = '▲ Details';
+  } else {
+    el.style.display = 'none';
+    if (toggle) toggle.textContent = '▼ Details';
+  }
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(function(el){ el.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(function(el){ el.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector('[data-tab="' + name + '"]').classList.add('active');
+}
+
+// ── Grouping ───────────────────────────────────
+function groupTasks(tasks, key) {
+  switch(key) {
+    case 'bucket':     return groupByBucket(tasks);
+    case 'assignedTo': return groupByAssignee(tasks);
+    case 'progress':   return groupByProgress(tasks);
+    case 'dueDate':    return groupByDueDate(tasks);
+    case 'labels':     return groupByLabels(tasks);
+    case 'priority':   return groupByPriority(tasks);
+    default:           return groupByBucket(tasks);
+  }
+}
+function groupByBucket(tasks) {
+  var order = KANBAN_DATA.buckets.map(function(b){ return b.name; });
+  var byB = {};
+  tasks.forEach(function(t){ if (!byB[t.bucketName]) byB[t.bucketName]=[]; byB[t.bucketName].push(t); });
+  var groups = [];
+  order.forEach(function(n){ if (byB[n]) groups.push({name:n, color:BUCKET_COLORS[n]||'#95a5a6', tasks:byB[n]}); });
+  Object.keys(byB).forEach(function(n){ if (order.indexOf(n)===-1) groups.push({name:n, color:'#95a5a6', tasks:byB[n]}); });
+  return groups;
+}
+function groupByAssignee(tasks) {
+  var byA = {}, unas = [];
+  tasks.forEach(function(t){
+    if (!t.assignees.length) { unas.push(t); }
+    else { t.assignees.forEach(function(a){ if (!byA[a]) byA[a]=[]; byA[a].push(t); }); }
+  });
+  var groups = Object.keys(byA).sort().map(function(n,i){ return {name:n, color:CAT_COLORS[i%CAT_COLORS.length], tasks:byA[n]}; });
+  if (unas.length) groups.push({name:'Unassigned', color:'#95a5a6', tasks:unas});
+  return groups;
+}
+function groupByProgress(tasks) {
+  var order = ['Not Started','In Progress','Completed'], byP = {};
+  order.forEach(function(p){ byP[p]=[]; });
+  tasks.forEach(function(t){ if (byP[t.progress]) byP[t.progress].push(t); });
+  return order.filter(function(p){ return byP[p].length>0; })
+              .map(function(p){ return {name:p, color:PROGRESS_STYLE[p].color, tasks:byP[p]}; });
+}
+function groupByDueDate(tasks) {
+  var order  = ['Overdue','Today','This Week','Next Week','Later','No Date'];
+  var colors = {Overdue:'#e74c3c',Today:'#e67e22','This Week':'#3498db','Next Week':'#1abc9c',Later:'#95a5a6','No Date':'#bdc3c7'};
+  var byG = {}; order.forEach(function(g){ byG[g]=[]; });
+  tasks.forEach(function(t){ var g=getDueDateGroup(t.due,t.progress); byG[g].push(t); });
+  return order.filter(function(g){ return byG[g].length>0; })
+              .map(function(g){ return {name:g, color:colors[g], tasks:byG[g]}; });
+}
+function groupByLabels(tasks) {
+  var byL = {}, unlb = [];
+  tasks.forEach(function(t){
+    if (!t.categories.length) { unlb.push(t); }
+    else { t.categories.forEach(function(c){ if (!byL[c]) byL[c]=[]; byL[c].push(t); }); }
+  });
+  var groups = Object.keys(byL).sort().map(function(n,i){ return {name:n, color:CAT_COLORS[i%CAT_COLORS.length], tasks:byL[n]}; });
+  if (unlb.length) groups.push({name:'No Labels', color:'#95a5a6', tasks:unlb});
+  return groups;
+}
+function groupByPriority(tasks) {
+  var order = [1,3,5,9], byP = {};
+  order.forEach(function(p){ byP[p]=[]; });
+  tasks.forEach(function(t){ var p = order.indexOf(t.priority)!==-1 ? t.priority : 5; byP[p].push(t); });
+  return order.filter(function(p){ return byP[p].length>0; })
+              .map(function(p){ var pm=PRIORITY_MAP[p]; return {name:pm.label, color:pm.color, tasks:byP[p]}; });
+}
+
+// ── Filtering ──────────────────────────────────
+function applyFilters(tasks) {
+  return tasks.filter(function(t) {
+    if (kanbanFilters.dueDate && kanbanFilters.dueDate.length)
+      if (kanbanFilters.dueDate.indexOf(getDueDateGroup(t.due,t.progress))===-1) return false;
+    if (kanbanFilters.priority && kanbanFilters.priority.length) {
+      var lbl = (PRIORITY_MAP[t.priority]||{label:'Medium'}).label;
+      if (kanbanFilters.priority.indexOf(lbl)===-1) return false;
+    }
+    if (kanbanFilters.progress && kanbanFilters.progress.length)
+      if (kanbanFilters.progress.indexOf(t.progress)===-1) return false;
+    if (kanbanFilters.labels && kanbanFilters.labels.length)
+      if (!t.categories.some(function(c){ return kanbanFilters.labels.indexOf(c)!==-1; })) return false;
+    if (kanbanFilters.bucket && kanbanFilters.bucket.length)
+      if (kanbanFilters.bucket.indexOf(t.bucketName)===-1) return false;
+    if (kanbanFilters.assignment && kanbanFilters.assignment.length)
+      if (!t.assignees.some(function(a){ return kanbanFilters.assignment.indexOf(a)!==-1; })) return false;
+    return true;
+  });
+}
+
+// ── Board render ───────────────────────────────
+function renderKanbanBoard() {
+  var container = document.getElementById('kanban-container');
+  if (!container || !KANBAN_DATA) return;
+  var filtered = applyFilters(KANBAN_DATA.tasks);
+  if (!filtered.length) { container.innerHTML = '<div class="kanban-empty">No tasks match the current filters.</div>'; return; }
+  var groups = groupTasks(filtered, kanbanGroupBy);
+  var html = '';
+  groups.forEach(function(g) {
+    var cards = g.tasks.map(renderCard).join('');
+    html += '<div class="kanban-col">' +
+            '<div class="col-header" style="border-top:4px solid ' + g.color + '">' +
+            '<span class="col-title">' + esc(g.name) + '</span>' +
+            '<span class="col-count">' + g.tasks.length + '</span></div>' +
+            '<div class="col-cards">' + cards + '</div></div>';
+  });
+  container.innerHTML = html;
+}
+
+// ── Timeline render ────────────────────────────
+function renderTimeline() {
+  var container = document.getElementById('timeline-container');
+  if (!container || !KANBAN_DATA) return;
+  var filtered = applyFilters(KANBAN_DATA.tasks);
+  var dated    = filtered.filter(function(t){ return t.start || t.due; });
+  if (!dated.length) { container.innerHTML = '<p style="padding:20px;color:#666">No tasks with dates match the current filters.</p>'; return; }
+
+  var now = new Date();
+  var allDates = [now];
+  dated.forEach(function(t){
+    if (t.start) allDates.push(new Date(t.start));
+    if (t.due)   allDates.push(new Date(t.due));
+  });
+  var ts = allDates.map(function(d){ return d.getTime(); });
+  var minDate = new Date(Math.min.apply(null, ts));
+  var maxDate = new Date(Math.max.apply(null, ts));
+  minDate = new Date(Date.UTC(minDate.getUTCFullYear(), minDate.getUTCMonth(), 1));
+  if (maxDate.getUTCMonth() === 11) maxDate = new Date(Date.UTC(maxDate.getUTCFullYear()+1, 0, 1));
+  else maxDate = new Date(Date.UTC(maxDate.getUTCFullYear(), maxDate.getUTCMonth()+1, 1));
+  var totalDays = (maxDate - minDate) / 86400000 || 1;
+  function pctX(dt){ return (dt - minDate) / 86400000 / totalDays * 100; }
+
+  var monthsHtml = '';
+  var cur = new Date(minDate);
+  while (cur <= maxDate) {
+    monthsHtml += '<div class="month-marker" style="left:' + pctX(cur).toFixed(2) + '%"><span>' +
+                  MONTH_NAMES[cur.getUTCMonth()] + ' ' + cur.getUTCFullYear() + '</span></div>';
+    if (cur.getUTCMonth() === 11) cur = new Date(Date.UTC(cur.getUTCFullYear()+1, 0, 1));
+    else cur = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth()+1, 1));
+  }
+  var todayLine = '<div class="today-line" style="left:' + pctX(now).toFixed(2) + '%"><span>Today</span></div>';
+
+  dated.sort(function(a,b){ return new Date(a.start||a.due) - new Date(b.start||b.due); });
+
+  var rowsHtml = '';
+  dated.forEach(function(t, idx) {
+    var barColor = BUCKET_COLORS[t.bucketName] || '#95a5a6';
+    var ps       = PROGRESS_STYLE[t.progress];
+    if (isOverdue(t.due, t.progress)) barColor = '#e74c3c';
+    var startDt  = t.start ? new Date(t.start) : null;
+    var dueDt    = t.due   ? new Date(t.due)   : null;
+    var barHtml  = '';
+    if (startDt && dueDt) {
+      var xS = pctX(startDt), xE = pctX(dueDt), w = Math.max(xE - xS, 0.3);
+      barHtml = '<div class="tl-bar" style="left:'+xS.toFixed(2)+'%;width:'+w.toFixed(2)+'%;background:'+barColor+'" title="'+t.progress+'">' +
+                '<div class="tl-bar-fill" style="width:'+ps.pct+'%;opacity:0.4;background:#000"></div></div>';
+    } else if (dueDt) {
+      barHtml = '<div class="tl-marker" style="left:'+pctX(dueDt).toFixed(2)+'%;background:'+barColor+'"></div>';
+    } else if (startDt) {
+      barHtml = '<div class="tl-marker" style="left:'+pctX(startDt).toFixed(2)+'%;background:'+barColor+';border-radius:50%"></div>';
+    }
+    var catDots = '';
+    t.categories.forEach(function(c,i){ catDots += '<span class="cat-dot" style="background:'+CAT_COLORS[i%CAT_COLORS.length]+'"></span>'; });
+    var bg         = idx % 2 === 0 ? '#f9f9f9' : '#fff';
+    var dueLabel   = fmtDate(t.due), startLabel = fmtDate(t.start);
+    var dateRange  = (startLabel && dueLabel) ? startLabel + ' – ' + dueLabel : (dueLabel || startLabel);
+    var titleShort = t.title.length > 48 ? esc(t.title.slice(0,48)) + '…' : esc(t.title);
+    rowsHtml += '<div class="tl-row" style="background:'+bg+'">' +
+                '<div class="tl-label" title="'+esc(t.title)+'">'+titleShort+catDots+'</div>' +
+                '<div class="tl-chart">'+barHtml+'</div>' +
+                '<div class="tl-date">'+dateRange+'</div></div>';
+  });
+
+  container.innerHTML = '<div class="timeline-wrap">' +
+    '<div class="tl-header-row">' +
+    '<div class="tl-label-header">Task</div>' +
+    '<div class="tl-chart-header">' + monthsHtml + todayLine + '</div>' +
+    '<div class="tl-date-header">Date Range</div></div>' +
+    '<div class="tl-body">' + rowsHtml + '</div></div>';
+}
+
+function renderAll() { renderKanbanBoard(); renderTimeline(); }
+
+// ── Toolbar ops ────────────────────────────────
+function changeGroupBy(val) { kanbanGroupBy = val; renderKanbanBoard(); }
+
+function toggleFilterDropdown(name) {
+  var dd = document.getElementById('fd-' + name);
+  var isOpen = dd.style.display !== 'none';
+  document.querySelectorAll('.filter-dropdown').forEach(function(el){ el.style.display='none'; });
+  if (!isOpen) dd.style.display = 'block';
+}
+function onFilterChange(name, value, checked) {
+  if (!kanbanFilters[name]) kanbanFilters[name] = [];
+  if (checked) { if (kanbanFilters[name].indexOf(value)===-1) kanbanFilters[name].push(value); }
+  else { kanbanFilters[name] = kanbanFilters[name].filter(function(v){ return v!==value; }); }
+  updateFilterButtons();
+  renderAll();
+}
+function clearFilter(name) {
+  kanbanFilters[name] = [];
+  document.getElementById('fd-'+name).querySelectorAll('input[type=checkbox]').forEach(function(cb){ cb.checked=false; });
+  updateFilterButtons();
+  renderAll();
+}
+function updateFilterButtons() {
+  document.querySelectorAll('.filter-group').forEach(function(g) {
+    var name  = g.dataset.filter;
+    var btn   = g.querySelector('.filter-btn');
+    var count = (kanbanFilters[name]||[]).length;
+    var label = btn.dataset.label;
+    btn.textContent = count ? label+' ('+count+') ▾' : label+' ▾';
+    if (count) btn.classList.add('filter-active'); else btn.classList.remove('filter-active');
+  });
+}
+function initFilterDropdowns() {
+  var defs = {
+    dueDate:    {label:'Due Date',   options:['Overdue','Today','This Week','Next Week','Later','No Date']},
+    priority:   {label:'Priority',   options:['Urgent','Important','Medium','Low']},
+    progress:   {label:'Progress',   options:['Not Started','In Progress','Completed']},
+    labels:     {label:'Labels',     options:KANBAN_DATA.allLabels},
+    bucket:     {label:'Bucket',     options:KANBAN_DATA.buckets.map(function(b){ return b.name; })},
+    assignment: {label:'Assignment', options:KANBAN_DATA.allAssignees}
+  };
+  Object.keys(defs).forEach(function(name) {
+    var def = defs[name];
+    var dd  = document.getElementById('fd-'+name);
+    if (!dd) return;
+    var html = '<div class="filter-dd-header"><span>'+def.label+'</span>' +
+               '<button onclick="clearFilter(\''+name+'\')">Clear</button></div>';
+    def.options.forEach(function(opt) {
+      html += '<label class="filter-option"><input type="checkbox" data-filter="'+name+'" data-value="'+esc(opt)+'"> '+esc(opt)+'</label>';
+    });
+    dd.innerHTML = html;
+  });
+}
+
+// ── Event delegation ───────────────────────────
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.filter-group'))
+    document.querySelectorAll('.filter-dropdown').forEach(function(el){ el.style.display='none'; });
+  if (e.target.matches('.filter-btn')) {
+    var name = e.target.closest('.filter-group').dataset.filter;
+    toggleFilterDropdown(name);
+  }
+});
+document.addEventListener('change', function(e) {
+  if (e.target.matches('.filter-option input[type=checkbox]'))
+    onFilterChange(e.target.dataset.filter, e.target.dataset.value, e.target.checked);
+});
+
+// ── Reset ──────────────────────────────────────
+function resetApp() {
+  KANBAN_DATA   = null;
+  kanbanGroupBy = 'bucket';
+  kanbanFilters = {};
+  _fileMap      = {};
+  document.getElementById('fileList').innerHTML = '';
+  document.getElementById('loadBtn').disabled = true;
+  document.getElementById('loadBtn').textContent = '⚡ View Report';
+  document.getElementById('folderInput').value = '';
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('upload-screen').style.display = 'flex';
+}
+</script>
+</body>
+</html>
