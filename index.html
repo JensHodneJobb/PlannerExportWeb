@@ -7,11 +7,12 @@
   <style>
     /* ── Reset & base ── */
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-           background: #f0f2f5; color: #333; min-height: 100vh; }
+           background: #f0f2f5; color: #333; min-height: 100%; }
 
     /* ── Upload screen ── */
-    #upload-screen { display: flex; flex-direction: column; min-height: 100vh; }
+    #upload-screen { display: flex; flex-direction: column; min-height: 100%; }
     #upload-screen header {
       background: #1a1a2e; color: #fff; padding: 20px 28px;
       display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -109,7 +110,7 @@
 
     /* ── Kanban ── */
     .kanban-board { display: flex; gap: 16px; padding: 20px; overflow-x: auto;
-                    align-items: flex-start; min-height: calc(100vh - 140px); }
+                    align-items: flex-start; min-height: 400px; }
     .kanban-col { min-width: 280px; max-width: 300px; flex-shrink: 0;
                   background: #e8ecf0; border-radius: 10px; overflow: hidden; }
     .col-header { display: flex; justify-content: space-between; align-items: center;
@@ -117,7 +118,7 @@
     .col-count { background: #e0e0e0; color: #555; border-radius: 12px;
                  padding: 2px 8px; font-size: 0.8rem; font-weight: 600; }
     .col-cards { padding: 10px; display: flex; flex-direction: column; gap: 10px;
-                 max-height: calc(100vh - 200px); overflow-y: auto; }
+                 max-height: 600px; overflow-y: auto; }
     .task-card { background: #fff; border-radius: 8px; padding: 12px;
                  box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: box-shadow 0.2s; }
     .task-card:hover { box-shadow: 0 3px 8px rgba(0,0,0,0.15); }
@@ -220,9 +221,9 @@
 
       <!-- Source selector tabs -->
       <div class="source-tabs">
-        <button class="source-tab active" onclick="switchSource('local')">&#128193; Local files</button>
-        <button class="source-tab" onclick="switchSource('sp-api')">&#128279; SharePoint REST API</button>
-        <button class="source-tab" onclick="switchSource('sp-urls')">&#128279; SharePoint direct URLs</button>
+        <button class="source-tab active" data-source="local">&#128193; Local files</button>
+        <button class="source-tab" data-source="sp-api">&#128279; SharePoint REST API</button>
+        <button class="source-tab" data-source="sp-urls">&#128279; SharePoint direct URLs</button>
       </div>
 
       <!-- ── Panel 1: Local file browser (original) ── -->
@@ -231,21 +232,22 @@
           Select the folder containing your Planner JSON export files.<br>
           All processing happens <strong>entirely in your browser</strong> — no data is ever uploaded.
         </p>
-        <div class="drop-zone" id="dropZone" onclick="document.getElementById('folderInput').click()">
+        <div class="drop-zone" id="dropZone">
           <div class="drop-icon">&#128193;</div>
           <p><strong>Click to select folder</strong> or drag &amp; drop files here</p>
           <small>Needs: PlanDetails.json · Buckets.json · Tasks.json · TaskDetails.json · UserLookup.json</small>
         </div>
-        <input type="file" id="folderInput" webkitdirectory multiple style="display:none" onchange="onFolderSelected(this.files)">
+        <input type="file" id="folderInput" webkitdirectory multiple style="display:none">
         <div class="file-list" id="fileList"></div>
-        <button class="btn-load" id="loadBtn" disabled onclick="processAndShow()">&#9889; View Report</button>
+        <button class="btn-load" id="loadBtn" disabled>&#9889; View Report</button>
       </div>
 
       <!-- ── Panel 2: SharePoint REST API ── -->
       <div class="source-panel" id="panel-sp-api">
         <p style="font-size:0.85rem;color:#777;margin-bottom:4px;line-height:1.6">
           Fetches the JSON files directly from a SharePoint document library using the <code>/_api</code> REST endpoint.
-          Works when this page is hosted on SharePoint <strong>or</strong> you are signed in to SharePoint in this browser.
+          <strong>This only works when this page itself is hosted on SharePoint</strong> (e.g. uploaded to Site Assets and embedded via iframe).
+          Upload <code>index.html</code> to a SharePoint document library, then embed its URL using an Embed web part.
         </p>
         <div class="sp-form">
           <label>SharePoint site URL</label>
@@ -255,8 +257,12 @@
           <label>Library / folder path (server-relative)</label>
           <input type="text" id="sp-folder-path" placeholder="/sites/mysite/Shared Documents/PlannerExport">
           <div class="sp-hint">The folder that contains PlanDetails.json, Buckets.json, etc.</div>
+
+          <label>Access token <span style="font-weight:400;color:#aaa">(optional — leave blank when embedded in SharePoint)</span></label>
+          <input type="text" id="sp-access-token" placeholder="eyJ0eXAiOiJKV1QiLCJhbGciOi..." autocomplete="off" spellcheck="false">
+          <div class="sp-hint">Paste a SharePoint/Graph Bearer token to use this tool from outside SharePoint. The token is never sent anywhere except the SharePoint API you configured above.</div>
         </div>
-        <button class="btn-sp-load" id="spApiBtn" onclick="loadFromSpApi()">&#9889; Load from SharePoint</button>
+        <button class="btn-sp-load" id="spApiBtn">&#9889; Load from SharePoint</button>
       </div>
 
       <!-- ── Panel 3: SharePoint direct download URLs ── -->
@@ -277,7 +283,7 @@
           <label>UserLookup.json URL</label>
           <input type="text" id="url-UserLookup" placeholder="https://contoso.sharepoint.com/...UserLookup.json?download=1">
         </div>
-        <button class="btn-sp-load" id="spUrlBtn" onclick="loadFromSpUrls()">&#9889; Load from SharePoint</button>
+        <button class="btn-sp-load" id="spUrlBtn">&#9889; Load from SharePoint</button>
       </div>
 
       <div class="error-msg" id="errorMsg"></div>
@@ -292,12 +298,12 @@
   <h1>
     &#128203; <span id="planTitle">Planner Board</span>
     <span class="subtitle" id="appSubtitle"></span>
-    <button class="reset-btn" onclick="resetApp()">&#8592; Load another</button>
+    <button class="reset-btn" id="resetBtn">&#8592; Load another</button>
   </h1>
 
   <div class="tabs">
-    <button class="tab-btn active" data-tab="kanban" onclick="switchTab('kanban')">&#128194; Kanban</button>
-    <button class="tab-btn" data-tab="timeline" onclick="switchTab('timeline')">&#128197; Timeline</button>
+    <button class="tab-btn active" data-tab="kanban">&#128194; Kanban</button>
+    <button class="tab-btn" data-tab="timeline">&#128197; Timeline</button>
   </div>
 
   <!-- Shared filter toolbar -->
@@ -337,7 +343,7 @@
     <div class="kanban-toolbar">
       <div class="toolbar-section">
         <span class="toolbar-label">Group by</span>
-        <select id="groupBySelect" class="toolbar-select" onchange="changeGroupBy(this.value)">
+        <select id="groupBySelect" class="toolbar-select">
           <option value="bucket" selected>Bucket</option>
           <option value="assignedTo">Assigned To</option>
           <option value="progress">Progress</option>
@@ -442,12 +448,17 @@ async function loadFromSpApi() {
   btn.disabled = true; btn.textContent = '⏳ Loading…';
   errEl.style.display = 'none';
 
+  var token = document.getElementById('sp-access-token').value.trim();
+  var fetchOpts = token
+    ? { headers: { 'Accept': 'application/json;odata=nometadata', 'Authorization': 'Bearer ' + token } }
+    : { headers: { 'Accept': 'application/json;odata=nometadata' }, credentials: 'include' };
+
   try {
     var results = await Promise.all(REQUIRED_FILES.map(function(name) {
       var fileUrl = folderPath + '/' + name;
       var apiUrl  = siteUrl + "/_api/web/GetFileByServerRelativeUrl('" +
-                    encodeURIComponent(fileUrl) + "')/$value";
-      return fetch(apiUrl, { headers: { 'Accept': 'application/json;odata=verbose' }, credentials: 'include' })
+                    fileUrl.replace(/'/g, "''") + "')/$value";
+      return fetch(apiUrl, fetchOpts)
         .then(function(r) {
           if (!r.ok) throw new Error('Could not fetch ' + name + ' (HTTP ' + r.status + ')');
           return r.json();
@@ -717,7 +728,7 @@ function renderCard(t) {
   }
   if (parts.length) {
     var cid = 'card-' + t.id.replace(/-/g,'').slice(0,12);
-    detailHtml = '<div class="detail-toggle" onclick="toggleDetail(\'' + cid + '\')">▼ Details</div>' +
+    detailHtml = '<div class="detail-toggle" data-toggle="' + cid + '">▼ Details</div>' +
                  '<div id="' + cid + '" class="task-detail" style="display:none">' + parts.join('') + '</div>';
   }
   var cs = t.progress === 'Completed' ? ' style="opacity:0.6"' : '';
@@ -971,7 +982,7 @@ function initFilterDropdowns() {
     var dd  = document.getElementById('fd-'+name);
     if (!dd) return;
     var html = '<div class="filter-dd-header"><span>'+def.label+'</span>' +
-               '<button onclick="clearFilter(\''+name+'\')">Clear</button></div>';
+               '<button data-clear-filter="'+name+'">Clear</button></div>';
     def.options.forEach(function(opt) {
       html += '<label class="filter-option"><input type="checkbox" data-filter="'+name+'" data-value="'+esc(opt)+'"> '+esc(opt)+'</label>';
     });
@@ -987,11 +998,39 @@ document.addEventListener('click', function(e) {
     var name = e.target.closest('.filter-group').dataset.filter;
     toggleFilterDropdown(name);
   }
+  if (e.target.matches('[data-clear-filter]'))
+    clearFilter(e.target.dataset.clearFilter);
+  if (e.target.matches('[data-toggle]'))
+    toggleDetail(e.target.dataset.toggle);
 });
 document.addEventListener('change', function(e) {
   if (e.target.matches('.filter-option input[type=checkbox]'))
     onFilterChange(e.target.dataset.filter, e.target.dataset.value, e.target.checked);
 });
+
+// ── Static element wiring (CSP-safe, no inline handlers) ──
+// Script is at the bottom of <body> so DOM is already available — wire up directly.
+(function wireUp() {
+  document.querySelectorAll('.source-tab').forEach(function(btn) {
+    btn.addEventListener('click', function() { switchSource(btn.dataset.source); });
+  });
+  document.getElementById('dropZone').addEventListener('click', function() {
+    document.getElementById('folderInput').click();
+  });
+  document.getElementById('folderInput').addEventListener('change', function() {
+    onFolderSelected(this.files);
+  });
+  document.getElementById('loadBtn').addEventListener('click', processAndShow);
+  document.getElementById('spApiBtn').addEventListener('click', loadFromSpApi);
+  document.getElementById('spUrlBtn').addEventListener('click', loadFromSpUrls);
+  document.getElementById('resetBtn').addEventListener('click', resetApp);
+  document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() { switchTab(btn.dataset.tab); });
+  });
+  document.getElementById('groupBySelect').addEventListener('change', function() {
+    changeGroupBy(this.value);
+  });
+})();
 
 // ── Reset ──────────────────────────────────────
 function resetApp() {
