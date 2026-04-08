@@ -54,6 +54,33 @@
     .error-msg { background: #fdedec; color: #c0392b; border-radius: 8px;
                  padding: 10px 14px; font-size: 0.83rem; margin-top: 14px; display: none; }
 
+    /* ── Source tabs (Local / SharePoint) ── */
+    .source-tabs { display: flex; gap: 0; margin-bottom: 20px; border-radius: 8px; overflow: hidden;
+                   border: 1px solid #dde1e7; }
+    .source-tab { flex: 1; padding: 8px 12px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+                  border: none; background: #f4f5f7; color: #666; transition: all 0.15s; }
+    .source-tab.active { background: #1a1a2e; color: #fff; }
+    .source-tab:first-child { border-right: 1px solid #dde1e7; }
+    .source-panel { display: none; }
+    .source-panel.active { display: block; }
+
+    /* ── SharePoint form ── */
+    .sp-form label { display: block; font-size: 0.78rem; font-weight: 600; color: #444;
+                     margin-bottom: 4px; margin-top: 12px; }
+    .sp-form input[type=text] {
+      width: 100%; padding: 8px 10px; border: 1px solid #ccd0d6; border-radius: 7px;
+      font-size: 0.85rem; color: #333; outline: none; transition: border-color 0.15s;
+    }
+    .sp-form input[type=text]:focus { border-color: #3498db; }
+    .sp-hint { font-size: 0.72rem; color: #aaa; margin-top: 3px; }
+    .btn-sp-load {
+      width: 100%; padding: 13px; border: none; border-radius: 9px; font-size: 0.96rem;
+      font-weight: 700; cursor: pointer; background: #0078d4; color: #fff;
+      transition: opacity 0.2s; letter-spacing: 0.01em; margin-top: 18px;
+    }
+    .btn-sp-load:hover { opacity: 0.87; }
+    .btn-sp-load:disabled { opacity: 0.4; cursor: not-allowed; }
+
     /* ── App screen (hidden until loaded) ── */
     #app-screen { display: none; }
 
@@ -190,20 +217,69 @@
   <div class="upload-body">
     <div class="upload-card">
       <h2>Load your Planner export</h2>
-      <p>
-        Select the folder containing your Planner JSON export files.<br>
-        All processing happens <strong>entirely in your browser</strong> — no data is ever uploaded.
-      </p>
 
-      <div class="drop-zone" id="dropZone" onclick="document.getElementById('folderInput').click()">
-        <div class="drop-icon">&#128193;</div>
-        <p><strong>Click to select folder</strong> or drag &amp; drop files here</p>
-        <small>Needs: PlanDetails.json · Buckets.json · Tasks.json · TaskDetails.json · UserLookup.json</small>
+      <!-- Source selector tabs -->
+      <div class="source-tabs">
+        <button class="source-tab active" onclick="switchSource('local')">&#128193; Local files</button>
+        <button class="source-tab" onclick="switchSource('sp-api')">&#128279; SharePoint REST API</button>
+        <button class="source-tab" onclick="switchSource('sp-urls')">&#128279; SharePoint direct URLs</button>
       </div>
-      <input type="file" id="folderInput" webkitdirectory multiple style="display:none" onchange="onFolderSelected(this.files)">
 
-      <div class="file-list" id="fileList"></div>
-      <button class="btn-load" id="loadBtn" disabled onclick="processAndShow()">&#9889; View Report</button>
+      <!-- ── Panel 1: Local file browser (original) ── -->
+      <div class="source-panel active" id="panel-local">
+        <p style="font-size:0.85rem;color:#777;margin-bottom:16px;line-height:1.6">
+          Select the folder containing your Planner JSON export files.<br>
+          All processing happens <strong>entirely in your browser</strong> — no data is ever uploaded.
+        </p>
+        <div class="drop-zone" id="dropZone" onclick="document.getElementById('folderInput').click()">
+          <div class="drop-icon">&#128193;</div>
+          <p><strong>Click to select folder</strong> or drag &amp; drop files here</p>
+          <small>Needs: PlanDetails.json · Buckets.json · Tasks.json · TaskDetails.json · UserLookup.json</small>
+        </div>
+        <input type="file" id="folderInput" webkitdirectory multiple style="display:none" onchange="onFolderSelected(this.files)">
+        <div class="file-list" id="fileList"></div>
+        <button class="btn-load" id="loadBtn" disabled onclick="processAndShow()">&#9889; View Report</button>
+      </div>
+
+      <!-- ── Panel 2: SharePoint REST API ── -->
+      <div class="source-panel" id="panel-sp-api">
+        <p style="font-size:0.85rem;color:#777;margin-bottom:4px;line-height:1.6">
+          Fetches the JSON files directly from a SharePoint document library using the <code>/_api</code> REST endpoint.
+          Works when this page is hosted on SharePoint <strong>or</strong> you are signed in to SharePoint in this browser.
+        </p>
+        <div class="sp-form">
+          <label>SharePoint site URL</label>
+          <input type="text" id="sp-site-url" placeholder="https://contoso.sharepoint.com/sites/mysite">
+          <div class="sp-hint">e.g. https://contoso.sharepoint.com/sites/mysite</div>
+
+          <label>Library / folder path (server-relative)</label>
+          <input type="text" id="sp-folder-path" placeholder="/sites/mysite/Shared Documents/PlannerExport">
+          <div class="sp-hint">The folder that contains PlanDetails.json, Buckets.json, etc.</div>
+        </div>
+        <button class="btn-sp-load" id="spApiBtn" onclick="loadFromSpApi()">&#9889; Load from SharePoint</button>
+      </div>
+
+      <!-- ── Panel 3: SharePoint direct download URLs ── -->
+      <div class="source-panel" id="panel-sp-urls">
+        <p style="font-size:0.85rem;color:#777;margin-bottom:4px;line-height:1.6">
+          Paste the direct-download link for each file (right-click a file in SharePoint → <em>Copy link</em>, then use the <code>download=1</code> URL).
+          You must be signed in to SharePoint in this browser.
+        </p>
+        <div class="sp-form">
+          <label>PlanDetails.json URL</label>
+          <input type="text" id="url-PlanDetails" placeholder="https://contoso.sharepoint.com/...PlanDetails.json?download=1">
+          <label>Buckets.json URL</label>
+          <input type="text" id="url-Buckets" placeholder="https://contoso.sharepoint.com/...Buckets.json?download=1">
+          <label>Tasks.json URL</label>
+          <input type="text" id="url-Tasks" placeholder="https://contoso.sharepoint.com/...Tasks.json?download=1">
+          <label>TaskDetails.json URL</label>
+          <input type="text" id="url-TaskDetails" placeholder="https://contoso.sharepoint.com/...TaskDetails.json?download=1">
+          <label>UserLookup.json URL</label>
+          <input type="text" id="url-UserLookup" placeholder="https://contoso.sharepoint.com/...UserLookup.json?download=1">
+        </div>
+        <button class="btn-sp-load" id="spUrlBtn" onclick="loadFromSpUrls()">&#9889; Load from SharePoint</button>
+      </div>
+
       <div class="error-msg" id="errorMsg"></div>
     </div>
   </div>
@@ -334,6 +410,111 @@ function renderFileList() {
   document.getElementById('errorMsg').style.display = 'none';
 }
 
+// ══════════════════════════════════════════════════════════════
+//  Source tab switching
+// ══════════════════════════════════════════════════════════════
+function switchSource(id) {
+  document.querySelectorAll('.source-tab').forEach(function(btn, i) {
+    var ids = ['local','sp-api','sp-urls'];
+    btn.classList.toggle('active', ids[i] === id);
+  });
+  document.querySelectorAll('.source-panel').forEach(function(panel) {
+    panel.classList.toggle('active', panel.id === 'panel-' + id);
+  });
+  document.getElementById('errorMsg').style.display = 'none';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SharePoint REST API loader (Option 1)
+// ══════════════════════════════════════════════════════════════
+async function loadFromSpApi() {
+  var siteUrl    = document.getElementById('sp-site-url').value.replace(/\/$/, '');
+  var folderPath = document.getElementById('sp-folder-path').value.replace(/\/$/, '');
+  var errEl      = document.getElementById('errorMsg');
+  var btn        = document.getElementById('spApiBtn');
+
+  if (!siteUrl || !folderPath) {
+    errEl.textContent = '✗ Please fill in both the site URL and folder path.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = '⏳ Loading…';
+  errEl.style.display = 'none';
+
+  try {
+    var results = await Promise.all(REQUIRED_FILES.map(function(name) {
+      var fileUrl = folderPath + '/' + name;
+      var apiUrl  = siteUrl + "/_api/web/GetFileByServerRelativeUrl('" +
+                    encodeURIComponent(fileUrl) + "')/$value";
+      return fetch(apiUrl, { headers: { 'Accept': 'application/json;odata=verbose' }, credentials: 'include' })
+        .then(function(r) {
+          if (!r.ok) throw new Error('Could not fetch ' + name + ' (HTTP ' + r.status + ')');
+          return r.json();
+        });
+    }));
+    showResults(results);
+  } catch(e) {
+    errEl.textContent = '✗ ' + e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = '⚡ Load from SharePoint';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SharePoint direct-URL loader (Option 2)
+// ══════════════════════════════════════════════════════════════
+async function loadFromSpUrls() {
+  var keys   = ['PlanDetails','Buckets','Tasks','TaskDetails','UserLookup'];
+  var errEl  = document.getElementById('errorMsg');
+  var btn    = document.getElementById('spUrlBtn');
+
+  var urls = keys.map(function(k) { return document.getElementById('url-' + k).value.trim(); });
+  if (urls.some(function(u) { return !u; })) {
+    errEl.textContent = '✗ Please fill in all five URLs.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = '⏳ Loading…';
+  errEl.style.display = 'none';
+
+  try {
+    var results = await Promise.all(urls.map(function(url, i) {
+      return fetch(url, { credentials: 'include' })
+        .then(function(r) {
+          if (!r.ok) throw new Error('Could not fetch ' + keys[i] + '.json (HTTP ' + r.status + ')');
+          return r.json();
+        });
+    }));
+    showResults(results);
+  } catch(e) {
+    errEl.textContent = '✗ ' + e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = '⚡ Load from SharePoint';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  Shared: render after data is loaded (from any source)
+// ══════════════════════════════════════════════════════════════
+function showResults(results) {
+  var planDetails = results[0];
+  var bucketsRaw  = results[1];
+  var tasksRaw    = results[2];
+  var detailsRaw  = results[3];
+  var usersRaw    = results[4];
+
+  KANBAN_DATA = buildKanbanData(planDetails, bucketsRaw, tasksRaw, detailsRaw, usersRaw);
+  document.getElementById('planTitle').textContent = planDetails.title || 'Planner Board';
+  document.getElementById('appSubtitle').textContent =
+    KANBAN_DATA.tasks.length + ' tasks · ' + KANBAN_DATA.buckets.length + ' buckets';
+  document.getElementById('upload-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  initFilterDropdowns();
+  renderAll();
+}
+
 // Drag & drop
 (function() {
   var dz = document.getElementById('dropZone');
@@ -369,24 +550,7 @@ async function processAndShow() {
   errEl.style.display = 'none';
   try {
     var results = await Promise.all(REQUIRED_FILES.map(function(n){ return readFileAsJSON(_fileMap[n]); }));
-    var planDetails = results[0];
-    var bucketsRaw  = results[1];
-    var tasksRaw    = results[2];
-    var detailsRaw  = results[3];
-    var usersRaw    = results[4];
-
-    KANBAN_DATA = buildKanbanData(planDetails, bucketsRaw, tasksRaw, detailsRaw, usersRaw);
-
-    // Update header
-    document.getElementById('planTitle').textContent = planDetails.title || 'Planner Board';
-    document.getElementById('appSubtitle').textContent =
-      KANBAN_DATA.tasks.length + ' tasks · ' + KANBAN_DATA.buckets.length + ' buckets';
-
-    // Show app
-    document.getElementById('upload-screen').style.display = 'none';
-    document.getElementById('app-screen').style.display = 'block';
-    initFilterDropdowns();
-    renderAll();
+    showResults(results);
   } catch(e) {
     errEl.textContent = '✗ ' + e.message;
     errEl.style.display = 'block';
